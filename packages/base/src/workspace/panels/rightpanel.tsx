@@ -5,12 +5,20 @@ import {
   IJupyterGISModel,
   IJupyterGISSettings,
 } from '@jupytergis/schema';
+import { showDialog } from '@jupyterlab/apputils';
+import { ReactWidget } from '@jupyterlab/ui-components';
 import { CommandRegistry } from '@lumino/commands';
 import * as React from 'react';
+
+import { FormGenerator } from '../../processingLibrary/form';
 import Draggable from 'react-draggable';
 
+import { geoProcessingOperationRegistry } from '../../processingLibrary/registry';
 import { useRightPanelOptions } from './hooks/useRightPanelOptions';
 import { useUIState } from './hooks/useUIState';
+
+const _processingCtx = require.context('../../processingLibrary/operations', false, /\.js$/);
+_processingCtx.keys().forEach((key: string) => _processingCtx(key));
 import { AnnotationsPanel } from '../../features/annotations';
 import { IdentifyPanelComponent } from '../../features/identify/IdentifyPanel';
 import { ObjectPropertiesReact } from '../../features/objectproperties';
@@ -84,6 +92,7 @@ interface IRightPanelProps {
   settings: IJupyterGISSettings;
   addLayer?: (id: string, layer: IJGISLayer, index: number) => Promise<void>;
   removeLayer?: (id: string) => void;
+  notebookTracker?: { currentWidget: { content: any } | null };
 }
 
 export const RightPanel: React.FC<IRightPanelProps> = props => {
@@ -126,6 +135,7 @@ export const RightPanel: React.FC<IRightPanelProps> = props => {
     !props.settings.objectPropertiesDisabled && !storyMapPresentationMode
       ? { name: 'objectProperties', title: 'Object Properties' }
       : false,
+    { name: 'processing', title: 'Processing' },
     !props.settings.storyMapsDisabled
       ? { name: 'storyPanel', title: storyPanelTitle }
       : false,
@@ -193,6 +203,48 @@ export const RightPanel: React.FC<IRightPanelProps> = props => {
             </TabsContent>
           )}
 
+          <TabsContent value="processing" className="jgis-panel-tab-content">
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {Array.from(geoProcessingOperationRegistry.operations.entries()).map(([id, item]) => (
+                <li key={id}>
+                  <button
+                    style={{ width: '100%', textAlign: 'left', padding: '6px 8px', cursor: 'pointer' }}
+                    onClick={() => {
+                      showDialog({
+                        title: item.name,
+                        body: ReactWidget.create(
+                          <FormGenerator
+                            operation={item}
+                            layers={Object.entries(props.model.getLayers()).map(([lid, layer]) => ({
+                              id: lid,
+                              name: layer.name,
+                              source: props.model.getSource(layer.parameters?.source)?.parameters?.path,
+                              type: layer.type
+                            }))}
+                            jgisPath={props.model.filePath.split('/').pop() ?? ''}
+                            onExecute={(output: string) => {
+                              const notebook = props.notebookTracker?.currentWidget?.content;
+                              if (!notebook?.model) {
+                                console.debug('No Notebook model found');
+                                return;
+                              }
+                              notebook.model.sharedModel.insertCell(
+                                notebook.activeCellIndex + 1,
+                                { cell_type: 'code', source: output, metadata: {} }
+                              );
+                            }}
+                          />
+                        )
+                      });
+                    }}
+                  >
+                    {item.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </TabsContent>
+
           {!props.settings.storyMapsDisabled && (
             <TabsContent
               value="storyPanel"
@@ -240,6 +292,7 @@ export const RightPanel: React.FC<IRightPanelProps> = props => {
               ></IdentifyPanelComponent>
             </TabsContent>
           )}
+
         </TabsRoot>
       </div>
     </Draggable>
