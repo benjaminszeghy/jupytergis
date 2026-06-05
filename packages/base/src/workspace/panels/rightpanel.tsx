@@ -229,7 +229,8 @@ export const RightPanel: React.FC<IRightPanelProps> = props => {
                       id: lid,
                       name: layer.name,
                       source: props.model.getSource(layer.parameters?.source)?.parameters?.path,
-                      type: layer.type
+                      type: layer.type,
+                      vectorType: layer.type === 'VectorLayer' ? layer.parameters?.symbologyState?.geometryType : undefined
                     }))}
                     jgisPath={props.model.filePath.split('/').pop() ?? ''}
                     onExecute={(output: string) => {
